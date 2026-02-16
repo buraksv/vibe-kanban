@@ -1,0 +1,131 @@
+version: '3.8'
+
+services:
+  # Local server (SQLite backend)
+  vibe-kanban-local:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+        POSTHOG_API_ENDPOINT: ${POSTHOG_API_ENDPOINT:-}
+    container_name: vibe-kanban-local
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3000
+      - RUST_LOG=${RUST_LOG:-info}
+      - SKIP_MIGRATIONS=${SKIP_MIGRATIONS:-false}
+    volumes:
+      # Mount repos directory for Git operations
+      - vibe-kanban-repos:/repos
+      # Optional: Mount assets for persistence
+      - vibe-kanban-assets:/root/.local/share/vibe-kanban
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Remote server (PostgreSQL backend)
+  vibe-kanban-remote:
+    build:
+      context: .
+      dockerfile: crates/remote/Dockerfile
+      args:
+        APP_NAME: remote
+        FEATURES: ${REMOTE_FEATURES:-}
+        POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+        POSTHOG_API_ENDPOINT: ${POSTHOG_API_ENDPOINT:-}
+        SENTRY_DSN_REMOTE: ${SENTRY_DSN_REMOTE:-}
+    container_name: vibe-kanban-remote
+    ports:
+      - "${REMOTE_PORT:-8081}:8081"
+    environment:
+      # Database configuration (external PostgreSQL)
+      - DATABASE_URL=${DATABASE_URL}
+      
+      # Server configuration
+      - SERVER_LISTEN_ADDR=0.0.0.0:8081
+      - SERVER_PUBLIC_BASE_URL=${SERVER_PUBLIC_BASE_URL}
+      - RUST_LOG=${RUST_LOG:-info}
+      - SKIP_MIGRATIONS=${SKIP_MIGRATIONS:-false}
+      
+      # Auth configuration
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTH_PUBLIC_BASE_URL=${AUTH_PUBLIC_BASE_URL}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      
+      # Optional: Email service (Loops)
+      - LOOPS_EMAIL_API_KEY=${LOOPS_EMAIL_API_KEY:-}
+      
+      # Optional: Storage (Azure Blob)
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME:-}
+      - AZURE_STORAGE_KEY=${AZURE_STORAGE_KEY:-}
+      - AZURE_CONTAINER_NAME=${AZURE_CONTAINER_NAME:-}
+      
+      # Optional: Storage (Cloudflare R2)
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:-}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-}
+      - R2_PUBLIC_URL=${R2_PUBLIC_URL:-}
+      
+      # Optional: PostHog Analytics
+      - POSTHOG_API_KEY=${POSTHOG_API_KEY:-}
+      - POSTHOG_API_ENDPOINT=${POSTHOG_API_ENDPOINT:-}
+      
+      # Optional: Sentry
+      - SENTRY_DSN_REMOTE=${SENTRY_DSN_REMOTE:-}
+      
+      # Optional: GitHub App
+      - GITHUB_APP_ID=${GITHUB_APP_ID:-}
+      - GITHUB_APP_PRIVATE_KEY=${GITHUB_APP_PRIVATE_KEY:-}
+      - GITHUB_APP_WEBHOOK_SECRET=${GITHUB_APP_WEBHOOK_SECRET:-}
+      
+      # Optional: ElectricSQL
+      - ELECTRIC_ROLE_PASSWORD=${ELECTRIC_ROLE_PASSWORD:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # PostgreSQL database (local development only)
+  # For production, use an external managed PostgreSQL service
+  postgres:
+    image: postgres:16-alpine
+    container_name: vibe-kanban-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-vibe_kanban}
+      - POSTGRES_USER=${POSTGRES_USER:-vibe_kanban}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vibe_kanban}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  vibe-kanban-repos:
+    driver: local
+  vibe-kanban-assets:
+    driver: local
+  postgres-data:
+    driver: local

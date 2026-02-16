@@ -2,6 +2,12 @@
 
 The `remote` crate contains the implementation of the Vibe Kanban hosted API.
 
+## Database Configuration
+
+**Important:** You can use **any database name** you want in production. The "remote" database name is only used in development scripts for generating SQLx metadata.
+
+See [README.database.md](./README.database.md) for detailed information about database naming and configuration.
+
 ## Prerequisites
 
 Create a `.env.remote` file in the repository root:

@@ -49,6 +49,12 @@ Please head to the [website](https://vibekanban.com/docs) for the latest documen
 ## Self-Hosting
 
 Want to host your own Vibe Kanban Cloud instance? See our [self-hosting guide](https://vibekanban.com/docs/self-hosting).
+
+### Docker Deployment
+
+For Docker and Jenkins-based deployments with external PostgreSQL:
+- [Docker Deployment Guide](DOCKER_DEPLOYMENT.md) - Comprehensive guide for production deployment
+- [Database Configuration](crates/remote/README.database.md) - Database naming and configuration details
   
 ## Support
 

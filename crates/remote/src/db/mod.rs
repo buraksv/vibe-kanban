@@ -48,6 +48,15 @@ where
 }
 
 pub(crate) async fn migrate(pool: &PgPool) -> Result<(), MigrateError> {
+    // Check if migrations should be skipped via environment variable
+    if std::env::var("SKIP_MIGRATIONS")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+    {
+        tracing::info!("Skipping database migrations (SKIP_MIGRATIONS=true)");
+        return Ok(());
+    }
+
     sqlx::migrate!("./migrations").run(pool).await
 }
 
