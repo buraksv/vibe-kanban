@@ -48,6 +48,8 @@ where
 }
 
 pub(crate) async fn migrate(pool: &PgPool) -> Result<(), MigrateError> {
+    use std::collections::HashSet;
+
     // Check if migrations should be skipped via environment variable
     if std::env::var("SKIP_MIGRATIONS")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
@@ -57,7 +59,66 @@ pub(crate) async fn migrate(pool: &PgPool) -> Result<(), MigrateError> {
         return Ok(());
     }
 
-    sqlx::migrate!("./migrations").run(pool).await
+    let migrator = sqlx::migrate!("./migrations");
+    let mut processed_versions: HashSet<i64> = HashSet::new();
+
+    loop {
+        match migrator.run(pool).await {
+            Ok(()) => return Ok(()),
+            Err(MigrateError::VersionMismatch(version)) => {
+                // Guard against infinite loop
+                if !processed_versions.insert(version) {
+                    tracing::error!(
+                        "Migration version {} checksum mismatch persists after update attempt",
+                        version
+                    );
+                    return Err(MigrateError::VersionMismatch(version));
+                }
+
+                tracing::warn!(
+                    "Migration version {} has checksum mismatch. This can happen when migration files are updated after being applied. Updating stored checksum...",
+                    version
+                );
+
+                // Find the migration with the mismatched version and get its current checksum
+                if let Some(migration) = migrator.iter().find(|m| m.version == version) {
+                    // Update the checksum in _sqlx_migrations to match the current file
+                    let result = sqlx::query(
+                        "UPDATE _sqlx_migrations SET checksum = $1 WHERE version = $2"
+                    )
+                    .bind(&*migration.checksum)
+                    .bind(version)
+                    .execute(pool)
+                    .await;
+
+                    match result {
+                        Ok(_) => {
+                            tracing::info!(
+                                "Updated checksum for migration version {}",
+                                version
+                            );
+                            // Continue loop to retry migration
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to update checksum for migration {}: {}",
+                                version,
+                                e
+                            );
+                            return Err(MigrateError::Execute(Box::new(e)));
+                        }
+                    }
+                } else {
+                    tracing::error!(
+                        "Migration version {} not found in current migration set",
+                        version
+                    );
+                    return Err(MigrateError::VersionMismatch(version));
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {

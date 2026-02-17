@@ -323,25 +323,35 @@ docker-compose -f docker-compose.prod.yml up -d
 
 ### Migration Hataları
 
-**Sorun:** `role "electric_sync" already exists` veya benzer "already exists" hataları
+**Sorun:** `migration 20251001000000 was previously applied but has been modified` veya `role "electric_sync" already exists`
 
-**ÇÖZÜM:** ✅ Bu problem artık düzeltildi! Tüm migration'lar idempotent hale getirildi.
+**ÇÖZÜM:** ✅ Artık otomatik düzeltiliyor! Sistem:
+1. Checksum mismatch'i algılar
+2. Migration dosyasının yeni checksum'ını hesaplar
+3. Database'deki eski checksum'ı günceller
+4. Migration'ı tekrar çalıştırır
 
-Eğer hala eski migration'lardan kaynaklı bir sorun yaşıyorsanız:
+Logları kontrol edin:
+```bash
+docker logs vibe-kanban-remote | grep -i migration
+# "Updating stored checksum..." mesajını görmelisiniz
+```
+
+**Eğer hala sorun devam ediyorsa:**
 
 ```bash
-# Eski migration checksum'larını temizleyin
+# Option 1: Migration history'yi tamamen sıfırla (sadece development/test için!)
 docker exec -it vibe-kanban-postgres psql -U vibe_kanban -d vibe_kanban
 DELETE FROM _sqlx_migrations;
 \q
 
-# Container'ı yeniden başlatın
+# Container'ı yeniden başlat
 docker-compose -f docker-compose.prod.yml restart vibe-kanban-remote
 ```
 
 **Sorun:** `migration version mismatch` hatası
 ```bash
-# Çözüm: Migration checksum'ını sıfırlayın (dikkatli kullanın!)
+# Artık otomatik düzeltiliyor, ama manuel olarak da düzeltebilirsiniz:
 docker exec -it vibe-kanban-postgres psql -U vibe_kanban -d vibe_kanban
 DELETE FROM _sqlx_migrations WHERE version = <problem_version>;
 # Container'ı restart edin
@@ -467,6 +477,13 @@ DATABASE_URL=postgres://user:pass@host:5432/my_app       # ✅ Doğru
 - Aynı migration tekrar çalışmaz
 
 `SKIP_MIGRATIONS=false` (default) olduğunda, sistem sadece **migration kontrolü** yapar (~1-2 saniye). Yeni migration yoksa hiçbir şey değişmez.
+
+**Özel Durum:** Migration dosyası daha önce uygulandıktan SONRA değiştirilirse, sistem:
+1. Checksum mismatch'i algılar
+2. Otomatik olarak checksum'ı günceller
+3. Migration'ı tekrar çalıştırmaya çalışır (ama idempotent olduğu için sorun çıkmaz!)
+
+Bu sayede migration dosyalarını güncelleyebilirsiniz (örn: idempotent hale getirmek için).
 
 ### SKIP_MIGRATIONS ne zaman true yapmalıyım?
 

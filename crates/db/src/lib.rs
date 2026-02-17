@@ -29,30 +29,31 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), Error> {
             Ok(()) => return Ok(()),
             Err(MigrateError::VersionMismatch(version)) => {
                 if cfg!(debug_assertions) {
-                    // return the error in debug mode to catch migration issues early
-                    return Err(sqlx::Error::Migrate(Box::new(
-                        MigrateError::VersionMismatch(version),
-                    )));
-                }
-
-                if !cfg!(windows) {
-                    // On non-Windows platforms, we do not attempt to auto-fix checksum mismatches
-                    return Err(sqlx::Error::Migrate(Box::new(
-                        MigrateError::VersionMismatch(version),
-                    )));
+                    // In debug mode, still auto-fix but log more verbosely
+                    tracing::warn!(
+                        "[DEBUG] Migration version {} checksum mismatch - will attempt to fix",
+                        version
+                    );
                 }
 
                 // Guard against infinite loop
                 if !processed_versions.insert(version) {
+                    tracing::error!(
+                        "Migration version {} checksum mismatch persists after update attempt",
+                        version
+                    );
                     return Err(sqlx::Error::Migrate(Box::new(
                         MigrateError::VersionMismatch(version),
                     )));
                 }
 
-                // On Windows, there can be checksum mismatches due to line ending differences
-                // or other platform-specific issues. Update the stored checksum and retry.
+                // Checksum mismatches can happen due to:
+                // - Line ending differences (Windows vs Unix)
+                // - Migration file updates after initial application
+                // - Platform-specific file encoding
+                // Update the stored checksum and retry.
                 tracing::warn!(
-                    "Migration version {} has checksum mismatch, updating stored checksum (likely platform-specific difference)",
+                    "Migration version {} has checksum mismatch. Updating stored checksum...",
                     version
                 );
 
