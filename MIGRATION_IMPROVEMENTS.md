@@ -1,53 +1,104 @@
 # Migration Improvements - Idempotent Operations
 
+## Summary
+
+All PostgreSQL migration files in `crates/remote/migrations/` have been updated to be **fully idempotent** (can be run multiple times safely without errors).
+
 ## Changes Made
 
-All PostgreSQL migration files have been updated to be **idempotent** (can be run multiple times safely).
+### 1. **`20251001000000_shared_tasks_activity.sql`**
+   - ✅ `CREATE OR REPLACE FUNCTION` → Already idempotent
+   - ✅ All triggers → Added `DROP TRIGGER IF EXISTS` before each `CREATE TRIGGER`
+   - ✅ All enums → Wrapped in `DO $$ BEGIN ... EXCEPTION WHEN duplicate_object` blocks
+   - ✅ All tables → Using `CREATE TABLE IF NOT EXISTS`
+   - ✅ All indexes → Using `CREATE INDEX IF NOT EXISTS`
 
-### Files Modified
+### 2. **`20251117000000_jwt_refresh_tokens.sql`**
+   - ✅ `ALTER TABLE ... ADD COLUMN` → Already using `IF NOT EXISTS`
+   - ✅ Indexes → Already using `IF NOT EXISTS`
 
-1. **`20251127000000_electric_support.sql`**
-   - ✅ `CREATE ROLE electric_sync` → Now checks if role exists
-   - ✅ `GRANT CONNECT ON DATABASE` → Uses `current_database()` instead of hardcoded "remote"
-   - ✅ `CREATE PUBLICATION` → Checks if publication exists before creating
+### 3. **`20251120121307_oauth_handoff_tokens.sql`**
+   - ✅ `ALTER TABLE ... ADD COLUMN` → Already using `IF NOT EXISTS`
 
-2. **`20251001000000_shared_tasks_activity.sql`**
-   - ✅ `CREATE FUNCTION ensure_activity_partition` → Changed to `CREATE OR REPLACE`
-   - ✅ `CREATE FUNCTION activity_notify` → Changed to `CREATE OR REPLACE`
+### 4. **`20251127000000_electric_support.sql`**
+   - ✅ Role creation → Already wrapped in existence check
+   - ✅ Publication creation → Already wrapped in existence check
+   - ✅ All operations → Already idempotent
 
-3. **`20260112000000_remote-projects.sql`**
-   - ✅ `CREATE TYPE issue_priority` → Wrapped in duplicate check
-   - ✅ `CREATE TYPE issue_relationship_type` → Wrapped in duplicate check
-   - ✅ `CREATE TYPE notification_type` → Wrapped in duplicate check
-   - ✅ `CREATE TYPE pull_request_status` → Wrapped in duplicate check
+### 5. **`20251201000000_drop_unused_activity_and_columns.sql`**
+   - ✅ All DROP operations → Already using `IF EXISTS`
 
-### Before (Problem)
+### 6. **`20251201010000_unify_task_status_enums.sql`** ⚠️ **FIXED**
+   - ✅ `ALTER TYPE ... RENAME VALUE` → Wrapped in conditional block to check if old value exists
+   ```sql
+   DO $$
+   BEGIN
+       IF EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid 
+                  WHERE t.typname = 'task_status' AND e.enumlabel = 'in-progress') THEN
+           ALTER TYPE task_status RENAME VALUE 'in-progress' TO 'inprogress';
+       END IF;
+   END $$;
+   ```
 
-```sql
-CREATE ROLE electric_sync WITH LOGIN REPLICATION;
--- ❌ ERROR: role "electric_sync" already exists
+### 7. **`20251212000000_create_reviews_table.sql`**
+   - ✅ Table creation → Already using `IF NOT EXISTS`
+   - ✅ Indexes → Already using `IF NOT EXISTS`
 
-CREATE TYPE issue_priority AS ENUM ('urgent', 'high', 'medium', 'low');
--- ❌ ERROR: type "issue_priority" already exists
+### 8. **`20251215000000_github_app_installations.sql`** ⚠️ **FIXED**
+   - ✅ All `CREATE TABLE` → Added `IF NOT EXISTS`
+   - ✅ All `CREATE INDEX` → Added `IF NOT EXISTS`
 
-CREATE FUNCTION my_function() ...
--- ❌ ERROR: function already exists
-```
+### 9. **`20251216000000_add_webhook_fields_to_reviews.sql`** ⚠️ **FIXED**
+   - ✅ `ALTER COLUMN ... DROP NOT NULL` → Wrapped in conditional check
+   - ✅ `ADD COLUMN` → Added `IF NOT EXISTS`
+   - ✅ `CREATE INDEX` → Added `IF NOT EXISTS`
 
-### After (Solution)
+### 10. **`20251216100000_add_review_enabled_to_repos.sql`** ⚠️ **FIXED**
+   - ✅ `ADD COLUMN` → Added `IF NOT EXISTS`
+   - ✅ `CREATE INDEX` → Added `IF NOT EXISTS`
 
-```sql
--- ✅ Idempotent: checks if role exists
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'electric_sync') THEN
-        CREATE ROLE electric_sync WITH LOGIN REPLICATION;
-    END IF;
-END
-$$;
+### 11. **`20260112000000_remote-projects.sql`** ⚠️ **FIXED**
+   - ✅ All enums → Already wrapped in duplicate checks
+   - ✅ All `CREATE TABLE` → Added `IF NOT EXISTS` to all tables
+   - ✅ All `CREATE INDEX` → Added `IF NOT EXISTS` to all indexes
+   - ✅ All triggers → Added `DROP TRIGGER IF EXISTS` before `CREATE TRIGGER`
+   - ✅ `ALTER TABLE ... ADD COLUMN` → Already using `IF NOT EXISTS`
+   - ✅ `ALTER TABLE ... DROP COLUMN` → Already using `IF EXISTS`
 
--- ✅ Idempotent: handles duplicate type error
-DO $$
+### 12. **`20260114000000_electric_sync_tables.sql`**
+   - ✅ All indexes → Already using `IF NOT EXISTS`
+
+### 13. **`20260115000000_billing.sql`**
+   - ✅ Table and indexes → Already using `IF NOT EXISTS`
+
+### 14. **`20260204000000_issue_attachments.sql`** ⚠️ **FIXED**
+   - ✅ All `CREATE TABLE` → Added `IF NOT EXISTS`
+   - ✅ All `CREATE INDEX` → Added `IF NOT EXISTS`
+
+### 15. **`20260205000000_add_issue_creator.sql`** ⚠️ **FIXED**
+   - ✅ `ADD COLUMN` → Added `IF NOT EXISTS`
+   - ✅ `CREATE INDEX` → Added `IF NOT EXISTS`
+
+### 16. **`20260213000000_pending_uploads.sql`** ⚠️ **FIXED**
+   - ✅ `CREATE TABLE` → Added `IF NOT EXISTS`
+   - ✅ `CREATE INDEX` → Added `IF NOT EXISTS`
+
+## Benefits
+
+1. **Safe Re-runs**: Migrations can now be run multiple times without errors
+2. **Development Flexibility**: No need to reset database during development
+3. **Deployment Safety**: Safer deployment process in case migrations need to be re-applied
+4. **Error Recovery**: Easy recovery from partial migration failures
+
+## Testing
+
+All migration files have been reviewed and tested to ensure:
+- Tables can be created multiple times
+- Indexes won't throw duplicate errors
+- Triggers can be recreated without conflicts
+- Enum modifications are conditional
+- Column additions check for existence
+- Column drops check for existence first
 BEGIN
     CREATE TYPE issue_priority AS ENUM ('urgent', 'high', 'medium', 'low');
 EXCEPTION

@@ -25,7 +25,7 @@ ALTER TABLE projects DROP COLUMN IF EXISTS metadata;
 -- Add issue_counter for sequential issue numbering per project
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS issue_counter INTEGER NOT NULL DEFAULT 0;
 
--- Add updated_at trigger for projects
+DROP TRIGGER IF EXISTS trg_projects_updated_at ON projects;
 CREATE TRIGGER trg_projects_updated_at
     BEFORE UPDATE ON projects
     FOR EACH ROW
@@ -33,7 +33,7 @@ CREATE TRIGGER trg_projects_updated_at
 
 -- 4. PROJECT STATUSES
 -- Configurable statuses per project (Backlog, Todo, etc.)
-CREATE TABLE project_statuses (
+CREATE TABLE IF NOT EXISTS project_statuses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE project_statuses (
 
 
 -- 6. PROJECT NOTIFICATION PREFERENCES
-CREATE TABLE project_notification_preferences (
+CREATE TABLE IF NOT EXISTS project_notification_preferences (
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 
@@ -56,7 +56,7 @@ CREATE TABLE project_notification_preferences (
 );
 
 -- 6. ISSUES
-CREATE TABLE issues (
+CREATE TABLE IF NOT EXISTS issues (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
 
@@ -121,13 +121,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_issues_simple_id ON issues;
 CREATE TRIGGER trg_issues_simple_id
     BEFORE INSERT ON issues
     FOR EACH ROW
     EXECUTE FUNCTION set_issue_simple_id();
 
 -- 9. ISSUE ASSIGNEES (Team members)
-CREATE TABLE issue_assignees (
+CREATE TABLE IF NOT EXISTS issue_assignees (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -136,7 +137,7 @@ CREATE TABLE issue_assignees (
 );
 
 -- 10. ISSUE FOLLOWERS
-CREATE TABLE issue_followers (
+CREATE TABLE IF NOT EXISTS issue_followers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -153,7 +154,7 @@ EXCEPTION
 END
 $$;
 
-CREATE TABLE issue_relationships (
+CREATE TABLE IF NOT EXISTS issue_relationships (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
     related_issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
@@ -164,7 +165,7 @@ CREATE TABLE issue_relationships (
 );
 
 -- 12. TAGS
-CREATE TABLE tags (
+CREATE TABLE IF NOT EXISTS tags (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,
@@ -173,7 +174,7 @@ CREATE TABLE tags (
     UNIQUE (project_id, name)
 );
 
-CREATE TABLE issue_tags (
+CREATE TABLE IF NOT EXISTS issue_tags (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
     tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
@@ -181,7 +182,7 @@ CREATE TABLE issue_tags (
 );
 
 -- 13. COMMENTS
-CREATE TABLE issue_comments (
+CREATE TABLE IF NOT EXISTS issue_comments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
     author_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -194,7 +195,7 @@ CREATE TABLE issue_comments (
 );
 
 -- 14. COMMENT REACTIONS
-CREATE TABLE issue_comment_reactions (
+CREATE TABLE IF NOT EXISTS issue_comment_reactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     comment_id UUID NOT NULL REFERENCES issue_comments(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -220,7 +221,7 @@ EXCEPTION
 END
 $$;
 
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -238,26 +239,26 @@ CREATE TABLE notifications (
 );
 
 -- Indexes for common lookups
-CREATE INDEX idx_issues_project_id ON issues(project_id);
-CREATE INDEX idx_issues_status_id ON issues(status_id);
-CREATE INDEX idx_issues_parent_issue_id ON issues(parent_issue_id);
-CREATE INDEX idx_issues_simple_id ON issues(simple_id);
-CREATE INDEX idx_issue_comments_issue_id ON issue_comments(issue_id);
-CREATE INDEX idx_issue_comments_parent_id ON issue_comments(parent_id);
+CREATE INDEX IF NOT EXISTS idx_issues_project_id ON issues(project_id);
+CREATE INDEX IF NOT EXISTS idx_issues_status_id ON issues(status_id);
+CREATE INDEX IF NOT EXISTS idx_issues_parent_issue_id ON issues(parent_issue_id);
+CREATE INDEX IF NOT EXISTS idx_issues_simple_id ON issues(simple_id);
+CREATE INDEX IF NOT EXISTS idx_issue_comments_issue_id ON issue_comments(issue_id);
+CREATE INDEX IF NOT EXISTS idx_issue_comments_parent_id ON issue_comments(parent_id);
 
-CREATE INDEX idx_notifications_user_unseen
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unseen
     ON notifications (user_id, seen)
     WHERE dismissed_at IS NULL;
 
-CREATE INDEX idx_notifications_user_created
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created
     ON notifications (user_id, created_at DESC);
 
-CREATE INDEX idx_notifications_org
+CREATE INDEX IF NOT EXISTS idx_notifications_org
     ON notifications (organization_id);
 
 -- 16. WORKSPACES
 -- Workspace metadata pushed from local clients
-CREATE TABLE workspaces (
+CREATE TABLE IF NOT EXISTS workspaces (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -272,10 +273,10 @@ CREATE TABLE workspaces (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_workspaces_project_id ON workspaces(project_id);
-CREATE INDEX idx_workspaces_owner_user_id ON workspaces(owner_user_id);
-CREATE INDEX idx_workspaces_issue_id ON workspaces(issue_id) WHERE issue_id IS NOT NULL;
-CREATE INDEX idx_workspaces_local_workspace_id ON workspaces(local_workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspaces_project_id ON workspaces(project_id);
+CREATE INDEX IF NOT EXISTS idx_workspaces_owner_user_id ON workspaces(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_workspaces_issue_id ON workspaces(issue_id) WHERE issue_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_workspaces_local_workspace_id ON workspaces(local_workspace_id);
 
 -- 17. PULL REQUESTS
 -- Direct PR tracking linked to issues (tasks)
@@ -287,7 +288,7 @@ EXCEPTION
 END
 $$;
 
-CREATE TABLE pull_requests (
+CREATE TABLE IF NOT EXISTS pull_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     url TEXT NOT NULL,
     number INTEGER NOT NULL,
@@ -303,6 +304,6 @@ CREATE TABLE pull_requests (
     UNIQUE (url)
 );
 
-CREATE INDEX idx_pull_requests_issue_id ON pull_requests(issue_id);
-CREATE INDEX idx_pull_requests_workspace_id ON pull_requests(workspace_id) WHERE workspace_id IS NOT NULL;
-CREATE INDEX idx_pull_requests_status ON pull_requests(status);
+CREATE INDEX IF NOT EXISTS idx_pull_requests_issue_id ON pull_requests(issue_id);
+CREATE INDEX IF NOT EXISTS idx_pull_requests_workspace_id ON pull_requests(workspace_id) WHERE workspace_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pull_requests_status ON pull_requests(status);
