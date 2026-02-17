@@ -172,9 +172,10 @@ Jenkinsfile'da tanımlı parametreler:
 
 Vibe Kanban SQLx migration sistemini kullanır. Bu sistem:
 
-✅ **Idempotent**: Aynı migration birden fazla çalıştırılamaz
-✅ **Versiyonlanmış**: Her migration bir version numarasına sahip
+✅ **Idempotent**: Migration'lar güvenle **tekrar çalıştırılabilir** - "already exists" hataları almaz
+✅ **Versiyonlanmış**: Her migration bir version numarasına sahip ve izlenir
 ✅ **Güvenli**: Sadece uygulanmamış migration'lar çalıştırılır
+✅ **Akıllı**: `CREATE ROLE`, `CREATE TYPE`, `CREATE FUNCTION` gibi komutlar var olup olmadığını kontrol eder
 
 ### Migration Kontrolü
 
@@ -232,6 +233,17 @@ docker run --rm \
 
 - Local (SQLite): `crates/db/migrations/*.sql`
 - Remote (PostgreSQL): `crates/remote/migrations/*.sql`
+
+**✅ Tüm migration'lar idempotent'tir** - tekrar çalıştırılabilir, hata vermez:
+- `CREATE ROLE` → Önce var olup olmadığını kontrol eder
+- `CREATE TYPE` → Duplicate error handling ile korunmuş
+- `CREATE FUNCTION` → `CREATE OR REPLACE` kullanır
+- `CREATE TABLE` → `IF NOT EXISTS` kullanır
+- `CREATE PUBLICATION` → Önce var olup olmadığını kontrol eder
+
+Bu sayede migration'lar container restart'ında "already exists" hatası vermez.
+
+Detaylı bilgi: [MIGRATION_IMPROVEMENTS.md](MIGRATION_IMPROVEMENTS.md)
 
 ## 🚀 Production Deployment
 
@@ -310,6 +322,22 @@ docker-compose -f docker-compose.prod.yml up -d
 ## 🔍 Sorun Giderme
 
 ### Migration Hataları
+
+**Sorun:** `role "electric_sync" already exists` veya benzer "already exists" hataları
+
+**ÇÖZÜM:** ✅ Bu problem artık düzeltildi! Tüm migration'lar idempotent hale getirildi.
+
+Eğer hala eski migration'lardan kaynaklı bir sorun yaşıyorsanız:
+
+```bash
+# Eski migration checksum'larını temizleyin
+docker exec -it vibe-kanban-postgres psql -U vibe_kanban -d vibe_kanban
+DELETE FROM _sqlx_migrations;
+\q
+
+# Container'ı yeniden başlatın
+docker-compose -f docker-compose.prod.yml restart vibe-kanban-remote
+```
 
 **Sorun:** `migration version mismatch` hatası
 ```bash

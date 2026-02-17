@@ -123,7 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_activity_project_seq
     ON activity (project_id, seq DESC);
 
 -- Create partitions on demand for the 24-hour window that contains target_ts.
-CREATE FUNCTION ensure_activity_partition(target_ts TIMESTAMPTZ)
+CREATE OR REPLACE FUNCTION ensure_activity_partition(target_ts TIMESTAMPTZ)
 RETURNS VOID
 LANGUAGE plpgsql
 AS $$
@@ -170,15 +170,7 @@ EXCEPTION
 END
 $$;
 
-DO $$
-BEGIN
-    DROP FUNCTION IF EXISTS activity_notify();
-EXCEPTION
-    WHEN undefined_function THEN NULL;
-END
-$$;
-
-CREATE FUNCTION activity_notify() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION activity_notify() RETURNS trigger AS $$
 BEGIN
     PERFORM pg_notify(
         'activity',

@@ -5,7 +5,13 @@ DROP TYPE IF EXISTS task_status;
 
 -- 1. ENUMS
 -- We define enums for fields with a fixed set of options
-CREATE TYPE issue_priority AS ENUM ('urgent', 'high', 'medium', 'low');
+DO $$
+BEGIN
+    CREATE TYPE issue_priority AS ENUM ('urgent', 'high', 'medium', 'low');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$$;
 
 -- 2. MODIFY EXISTING ORGANIZATIONS TABLE
 -- Add issue_prefix for simple IDs (e.g., "BLO" from "Bloop")
@@ -139,7 +145,13 @@ CREATE TABLE issue_followers (
 
 -- 11. ISSUE RELATIONSHIPS
 -- Links issues with different relationship types (blocking, related, duplicate)
-CREATE TYPE issue_relationship_type AS ENUM ('blocking', 'related', 'has_duplicate');
+DO $$
+BEGIN
+    CREATE TYPE issue_relationship_type AS ENUM ('blocking', 'related', 'has_duplicate');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$$;
 
 CREATE TABLE issue_relationships (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -195,12 +207,18 @@ CREATE TABLE issue_comment_reactions (
 );
 
 -- 15. NOTIFICATIONS
-CREATE TYPE notification_type AS ENUM (
-    'issue_comment_added',
-    'issue_status_changed',
-    'issue_assignee_changed',
-    'issue_deleted'
-);
+DO $$
+BEGIN
+    CREATE TYPE notification_type AS ENUM (
+        'issue_comment_added',
+        'issue_status_changed',
+        'issue_assignee_changed',
+        'issue_deleted'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$$;
 
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -261,7 +279,13 @@ CREATE INDEX idx_workspaces_local_workspace_id ON workspaces(local_workspace_id)
 
 -- 17. PULL REQUESTS
 -- Direct PR tracking linked to issues (tasks)
-CREATE TYPE pull_request_status AS ENUM ('open', 'merged', 'closed');
+DO $$
+BEGIN
+    CREATE TYPE pull_request_status AS ENUM ('open', 'merged', 'closed');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$$;
 
 CREATE TABLE pull_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
