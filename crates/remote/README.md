@@ -19,6 +19,9 @@ VIBEKANBAN_REMOTE_JWT_SECRET=your_base64_encoded_secret
 # Required — password for the electric_sync database role used by ElectricSQL
 ELECTRIC_ROLE_PASSWORD=your_secure_password
 
+# Optional — set to true to skip database migrations on startup (default: false)
+# SKIP_MIGRATIONS=true
+
 # OAuth — at least one provider (GitHub or Google) must be configured
 GITHUB_OAUTH_CLIENT_ID=your_github_web_app_client_id
 GITHUB_OAUTH_CLIENT_SECRET=your_github_web_app_client_secret
@@ -38,6 +41,21 @@ docker compose --env-file ../../.env.remote -f docker-compose.yml up --build
 ```
 
 This starts PostgreSQL, ElectricSQL, and the Remote Server. The web UI and API are exposed on `http://localhost:3000` (mapped from internal port 8081). Postgres is available at `postgres://remote:remote@localhost:5433/remote`.
+
+### Skip database migrations
+
+If you want to skip database migrations on startup (useful during development or when manually managing migrations):
+
+```bash
+# Option 1: Environment variable in command
+SKIP_MIGRATIONS=true docker compose --env-file ../../.env.remote -f docker-compose.yml up
+
+# Option 2: Add to .env.remote file
+echo "SKIP_MIGRATIONS=true" >> ../../.env.remote
+docker compose --env-file ../../.env.remote -f docker-compose.yml up
+```
+
+**Note:** All migrations are now idempotent (safe to run multiple times), so you usually don't need to skip them.
 
 ## Run Vibe Kanban
 

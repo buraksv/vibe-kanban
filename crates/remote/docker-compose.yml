@@ -87,6 +87,9 @@ services:
     environment:
       RUST_LOG: info,remote=info
 
+      # Database migrations — set SKIP_MIGRATIONS=true to skip on startup
+      SKIP_MIGRATIONS: ${SKIP_MIGRATIONS:-false}
+
       SERVER_DATABASE_URL: postgres://remote:remote@remote-db:5432/remote
       SERVER_LISTEN_ADDR: 0.0.0.0:8081
       ELECTRIC_URL: http://electric:3000
